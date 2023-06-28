@@ -361,7 +361,13 @@ def egrepclosure(*exprs):
 
 def text_to_dict(lines):
     for line in lines:
-        yield orjson.loads(line)
+        try:
+            r = orjson.loads(line)
+            yield r
+        except Exception as e:
+            print(e)
+            #프로그램 멈추지 않게 하기 위해서
+
 
 
 def extract_to_dict(dicts, *keys):
@@ -390,10 +396,12 @@ if __name__ == '__main__':
     egrep = egrepclosure('radio', 'videos', 'artists', '327225965')
 
     lines = line_stream(file_stream)
-
-    for line in egrep(lines):
-        print(line)
     dicts = text_to_dict(lines)
+    for dict in egrep(dicts):
+        print(dict)
+    # for line in egrep(lines):
+    #     print(line)
+    # dicts = text_to_dict(lines)
     paths = extract_to_dict(dicts, 'uno', 'path')
 
     # dataList  = {

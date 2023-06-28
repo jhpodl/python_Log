@@ -19,7 +19,7 @@ def egrepclosure(*exprs):
 
     return egrep
 
-
+# 라이브러리
 def text_to_dict(lines):
     for line in lines:
         yield orjson.loads(line)
