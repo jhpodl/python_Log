@@ -1,3 +1,4 @@
+import configparser
 from tkinter import ttk
 
 import webbrowser
@@ -8,6 +9,8 @@ import tkinter.messagebox as messagebox
 
 sys.path.insert(0, "/")
 from util.xutil import *
+
+current_date = datetime.now().strftime("%Y-%m-%d")
 
 
 def egrepclosure(*exprs):
@@ -40,51 +43,17 @@ def copy_grep_results(lines, entry):
     search_terms = entry.get().split()
     egrep = egrepclosure(*search_terms)
 
-    # error = egrepclosure("ERROR") , userId로 select할때 그 해당하는 유저의 에러로그만 뽑아주도록
-
-    # file_stream = file_path_stream('C:\\Users\\admin\\Documents\\', filename)
-    # lines = line_stream(file_stream)
-
     lines_list = [line + '\n' for line in egrep(lines)]
-
-    all_lines = ''.join(lines_list)
-
-    result_filename = 'C:\\Users\\admin\\Documents\\result.txt'
-    with open(result_filename, 'w', encoding='utf-8') as f:
-        f.write(all_lines)
-
-    webbrowser.open(result_filename)
-
-    root.clipboard_clear()
-    root.clipboard_append(all_lines)
-
-    # messagebox.showinfo("copy_grep_results completed", "copy_grep_results completed")
+    show_result(lines_list)
 
 
-current_date = datetime.now().strftime("%Y-%m-%d")
-
-
-def getLogDev():
+def get_server_filelist(server):
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect('10.180.10.50', port=22, username='crdhkim', password='C0mpassion23$')
+    ssh.connect(config.get(server, 'ip'), port=int(config.get(server, 'port')), username=config.get(server, 'username'),
+                password=config.get(server, 'password'))
 
-    stdin, stdout, stderr = ssh.exec_command("ls /data/logs/catalina/")
-    file_list = stdout.read().decode().splitlines()
-
-    ssh.close()
-    return file_list
-
-
-def getLogProd(server):
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    if server == "prod1":
-        ssh.connect('10.180.10.61', port=22, username='prodwas1', password='ZjaVoTus12#$')
-    elif server == "prod2":
-        ssh.connect('10.180.10.62', port=22, username='prodwas2', password='ZjaVoTus12#$')
-
-    stdin, stdout, stderr = ssh.exec_command("ls /data/logs/catalina/")
+    stdin, stdout, stderr = ssh.exec_command(config.get("COMMAND", 'ls_command'))
     file_list = stdout.read().decode().splitlines()
 
     ssh.close()
@@ -92,21 +61,9 @@ def getLogProd(server):
 
 
 def on_get_file_button_clicked(server):
-    if server == "dev":
-        options = getLogDev()
-    elif server.__contains__("prod"):
-        options = getLogProd(server)
-
-    server_list_combo = ttk.Combobox(root, values=options)
-    server_list_combo.pack()
-    widgets.append(server_list_combo)
-    widgets_init_download.append(server_list_combo)
-
-    download_button = tk.Button(root, text="Download selected file",
-                                command=lambda: download_file(server_list_combo, server))
-    download_button.pack()
-    widgets.append(download_button)
-    widgets_init_download.append(download_button)
+    server_list_combo = add_widget(widgets_init_download, ttk.Combobox, values=get_server_filelist(server))
+    download_button = add_widget(widgets_init_download, tk.Button, text=config.get("MESSAGE", 'download'),
+                                 command=lambda: download_file(server_list_combo, server.upper()))
 
 
 def make_id_list(lines):
@@ -121,85 +78,57 @@ def make_id_list(lines):
 
 
 def download_file(server_list_combo, server):
-    for widget in widgets:
-        if widget not in widgets_init_download:
-            widget.destroy()
-
-    widget_control("disable", "wait")
+    widget_destroy(widgets_init_download)
+    widget_lock("disable", "wait")
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    if server == "dev":
-        ssh.connect('10.180.10.50', port=22, username='crdhkim', password='C0mpassion23$')
-    elif server == "prod1":
-        ssh.connect('10.180.10.61', port=22, username='prodwas1', password='ZjaVoTus12#$')
-    elif server == "prod2":
-        ssh.connect('10.180.10.62', port=22, username='prodwas2', password='ZjaVoTus12#$')
+    ssh.connect(config.get(server, 'ip'), port=int(config.get(server, 'port')), username=config.get(server, 'username'),
+                password=config.get(server, 'password'))
 
     sftp = ssh.open_sftp()
-    remoteFilename = f"/data/logs/catalina/{server_list_combo.get()}"
-    localFilename = f"C:\\Users\\admin\\Documents\\{server_list_combo.get()}"
-    sftp.get(remoteFilename, localFilename)
+
+    log_filename=server_list_combo.get()
+    sftp.get(config.get('LOG_PATHS', 'origin_log_path') + log_filename,
+             config.get('LOG_PATHS', 'source_log_path') + log_filename)
 
     sftp.close()
     ssh.close()
 
-    widget_control("normal", "")
+    widget_lock("normal", "")
 
-    message_label = tk.Label(root, text="Please enter a search word above entry")
-    message_label.pack(side=tk.TOP)
-    widgets.append(message_label)
+    message_label = add_widget("", tk.Label, text=config.get('MESSAGE', 'search_text'))
+    entry = add_widget("", tk.Entry)
+    button = add_widget("", tk.Button, text="SearchAndCopy", command=lambda: copy_grep_results(
+        line_stream(file_path_stream(config.get('LOG_PATHS', 'source_log_path'), log_filename)), entry))
+    message_label = add_widget("", tk.Label, text="ID list")
 
-    entry = tk.Entry(root, width=50)
-    entry.pack(side=tk.TOP)
-    widgets.append(entry)
-
-    button = tk.Button(root, text="SearchAndCopy", command=lambda: copy_grep_results(
-        line_stream(file_path_stream('C:\\Users\\admin\\Documents\\', server_list_combo.get())), entry))
-    # ,state='disabled')
-    button.pack(anchor="center")
-    widgets.append(button)
-
-    message_label = tk.Label(root, text="ID list")
-    message_label.pack(side=tk.TOP)
-    widgets.append(message_label)
-
-    placeholder_text = "Search an item..."
-    id_list = make_id_list(line_stream(file_path_stream('C:\\Users\\admin\\Documents\\', server_list_combo.get())))
-    id_combo = ttk.Combobox(root, values=list(id_list))
-    id_combo.set(placeholder_text)
+    id_list = make_id_list(line_stream(file_path_stream(config.get('LOG_PATHS', 'source_log_path'), log_filename)))
+    id_combo = add_widget("", ttk.Combobox, values=list(id_list))
+    id_combo.set(config.get('MESSAGE', 'combo_search'))
 
     def search_ids(event):
-        # Get the current text in the combobox
         search_text = id_combo.get()
-        # Filter the ids based on the search text
         filtered_ids = [id for id in id_list if search_text.lower() in id.lower()]
-        # Update the values in the combobox with the filtered ids
         id_combo['values'] = filtered_ids
 
-    id_combo.pack()
     id_combo.bind('<KeyRelease>', search_ids)
 
     def on_combobox_changed(event):
-        widget_control("disable", "wait")
-        for widget in widgets:
-            if widget not in widgets_combo:
-                widget.destroy()
+        widget_lock("disable", "wait")
+        widget_destroy(widgets_combo)
 
         selected_item = id_combo.get()
         print("Selected item is:", selected_item)
 
         egrep = egrepclosure(selected_item)
         lines_list = [line + '\n' for line in
-                      egrep(line_stream(file_path_stream('C:\\Users\\admin\\Documents\\', server_list_combo.get())))]
+                      egrep(line_stream(file_path_stream(config.get('LOG_PATHS', 'source_log_path'), log_filename)))]
 
-        session_label = tk.Label(root, text="Session List")
-        session_label.pack(side=tk.TOP)
-        widgets.append(session_label)
-
+        session_label = add_widget("", tk.Label, text="Session List")
         session_list = set([])
         for line in lines_list:
-            matches = re.findall(r"\[(.*?)\]", line)
+            matches = re.findall(r"\[(.*?)]", line)
             if matches:
                 try:
                     datetime.strptime(matches[0], "%Y-%m-%d %H:%M:%S")
@@ -207,65 +136,52 @@ def download_file(server_list_combo, server):
                 except ValueError:
                     print(f"{matches}")
 
-        session_combo = ttk.Combobox(root, values=list(session_list))
+        session_combo = add_widget("", ttk.Combobox, values=list(session_list))
 
         def on_session_combo_changed(event):
-            widget_control("disable", "wait")
+            widget_lock("disable", "wait")
             selected_item = session_combo.get()
             print("Selected item is:", selected_item)
 
             egrep = egrepclosure(selected_item)
             err_str = []
             lines_list = []
-            for line in egrep(line_stream(file_path_stream('C:\\Users\\admin\\Documents\\', server_list_combo.get()))):
+            for line in egrep(line_stream(file_path_stream(config.get('LOG_PATHS', 'source_log_path'), log_filename))):
                 line = line + '\n'
                 if "ERROR" in line:
                     err_str.append(line)
                 else:
                     lines_list.append(line)
             lines_list = err_str + lines_list
-            all_lines = ''.join(lines_list)
-            result_filename = 'C:\\Users\\admin\\Documents\\result.txt'
-            with open(result_filename, 'w', encoding='utf-8') as f:
-                f.write(all_lines)
-            webbrowser.open(result_filename)
-            root.clipboard_clear()
-            root.clipboard_append(all_lines)
-            widget_control("normal", "")
+            show_result(lines_list)
+            widget_lock("normal", "")
 
         session_combo.bind("<<ComboboxSelected>>", on_session_combo_changed)
-        session_combo.pack()
-        widgets.append(session_combo)
-
-        all_lines = ''.join(lines_list)
-
-        result_filename = 'C:\\Users\\admin\\Documents\\result.txt'
-        with open(result_filename, 'w', encoding='utf-8') as f:
-            f.write(all_lines)
-
-        webbrowser.open(result_filename)
-        root.clipboard_clear()
-        root.clipboard_append(all_lines)
-        widget_control("normal", "")
-
-        # button = tk.Button(root, text=selected_item+"'s ERROR log", command=lambda: get_Error_logs(
-        #     line_stream(file_path_stream('C:\\Users\\admin\\Documents\\', server_list_combo.get())), entry))
-        # # ,state='disabled')
-        # button.pack(anchor="center")
-        # widgets.append(button)
-
-    # def get_Error_logs():
+        show_result(lines_list)
+        widget_lock("normal", "")
 
     id_combo.bind("<<ComboboxSelected>>", on_combobox_changed)
-    widgets.append(id_combo)
-    widgets_combo=widgets_init_download.copy()
+    widgets_combo = widgets_init_download.copy()
     widgets_combo.append(id_combo)
 
-    #widgets_init_download.append(id_combo)
-    #messagebox.showinfo("File transfer completed", f"File {localFilename} has been successfully downloaded")
+
+def show_result(lines_list):
+    all_lines = ''.join(lines_list)
+    result_filename = config.get('LOG_PATHS', 'result')
+    with open(result_filename, 'w', encoding='utf-8') as f:
+        f.write(all_lines)
+    webbrowser.open(result_filename)
+    root.clipboard_clear()
+    root.clipboard_append(all_lines)
 
 
-def widget_control(state, cursor):
+def widget_destroy(list):
+    for widget in widgets:
+        if widget not in list:
+            widget.destroy()
+
+
+def widget_lock(state, cursor):
     for widget in root.winfo_children():
         widget.configure(state=state)
     root.config(cursor=cursor)
@@ -274,10 +190,17 @@ def widget_control(state, cursor):
 
 def on_get_log_button_clicked():
     server = combo.get()
-    for widget in widgets:
-        if widget not in (combo, get_log_button):
-            widget.destroy()
-    on_get_file_button_clicked(server)
+    widget_destroy((combo, get_log_button))
+    on_get_file_button_clicked(server.upper())
+
+
+def add_widget(widget_list, widget_type, *args, **kwargs):
+    widget = widget_type(root, *args, **kwargs)
+    widget.pack(side=tk.TOP)
+    widgets.append(widget)
+    if widget_list != "":
+        widget_list.append(widget)
+    return widget
 
 
 if __name__ == '__main__':
@@ -286,15 +209,10 @@ if __name__ == '__main__':
 
     widgets = []
     widgets_init_download = []
+    config = configparser.ConfigParser()
+    config.read('config/config.ini')
 
-    combo = ttk.Combobox(root, values=["dev", "prod1", "prod2"])
-    combo.pack(side=tk.TOP)
-    widgets.append(combo)
-    widgets_init_download.append(combo)
-
-    get_log_button = tk.Button(root, text="Get Log", command=on_get_log_button_clicked)
-    get_log_button.pack(side=tk.TOP)
-    widgets.append(get_log_button)
-    widgets_init_download.append(get_log_button)
+    combo = add_widget(widgets_init_download, ttk.Combobox, values=["dev", "prod1", "prod2"])
+    get_log_button = add_widget(widgets_init_download, tk.Button, text="Get Log", command=on_get_log_button_clicked)
 
     root.mainloop()
