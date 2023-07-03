@@ -15,6 +15,7 @@ class WidgetManager:
     def __init__(self):
         self.widgets = []
         self.widgets_init_download = []
+        self.widgets_combo = []
 
     def add_widget(self, widget_type, *args, widget_list="", **kwargs):
         """Add a widget to the root and widget lists."""
@@ -165,17 +166,19 @@ def on_combobox_changed(event, id_combo, log_filename):
     selected_item = id_combo.get()
     print("Selected item is:", selected_item)
     lines_list = process_selected_item(selected_item, log_filename)
-    session_label = add_widget("", tk.Label, text="Session List")
+    session_label = widget_manager.add_widget(tk.Label, text="Session List")
     session_list = process_session_list(lines_list)
-    session_combo = add_widget("", ttk.Combobox, values=list(session_list))
-    session_combo.bind("<<ComboboxSelected>>", on_session_combo_changed)
+    session_combo = widget_manager.add_widget(ttk.Combobox, values=list(session_list))
+    session_combo.bind("<<ComboboxSelected>>",
+                       lambda event: on_session_combo_changed(event, session_combo, log_filename)
+                        )
     show_result(lines_list)
     widget_manager.widget_lock("normal", "")
 
 
 def initialize_widgets(log_filename, log_lines):
-    create_search_section(log_filename, log_lines)
-    create_id_list_section(log_lines)
+    create_search_section(log_lines)
+    create_id_list_section(log_filename,log_lines)
 
 
 def create_search_section(log_lines):
@@ -200,8 +203,8 @@ def bind_events_to_id_combo(id_combo, id_list, log_filename):
     id_combo.bind("<<ComboboxSelected>>",
                   lambda event: on_combobox_changed(event, id_combo, log_filename))
 
-    widgets_combo = widget_manager.widgets_init_download.copy()
-    widgets_combo.append(id_combo)
+    widget_manager.widgets_combo = widget_manager.widgets_init_download.copy()
+    widget_manager.widgets_combo.append(id_combo)
 
 
 def search_ids(event, id_combo, id_list):
@@ -229,9 +232,9 @@ def on_get_log_button_clicked():
 
 def create_file_button(server_filelist, server):
     """Create a file download button with a server filelist combo box."""
-    server_list_combo = widget_manager.add_widget(ttk.Combobox, values=server_filelist)
+    server_list_combo = widget_manager.add_widget(ttk.Combobox, values=server_filelist ,widget_list=widget_manager.widgets_init_download)
     download_button = widget_manager.add_widget(tk.Button, text=config.get("MESSAGE", 'download'),
-                                                command=lambda: download_file(server_list_combo.get(), server))
+                                                command=lambda: download_file(server_list_combo.get() , server),widget_list=widget_manager.widgets_init_download)
 
 
 if __name__ == '__main__':
@@ -239,6 +242,6 @@ if __name__ == '__main__':
     root.title("Compassion Log v0.2")
     config = configparser.ConfigParser()
     config.read('config/config.ini')
-    combo = widget_manager.add_widget(ttk.Combobox, values=["dev", "prod1", "prod2"])
-    get_log_button = widget_manager.add_widget(tk.Button, text="Get Log", command=on_get_log_button_clicked)
+    combo = widget_manager.add_widget(ttk.Combobox, values=["dev", "prod1", "prod2"],widget_list=widget_manager.widgets_init_download)
+    get_log_button = widget_manager.add_widget(tk.Button, text="Get Log", command=on_get_log_button_clicked, widget_list=widget_manager.widgets_init_download)
     root.mainloop()
